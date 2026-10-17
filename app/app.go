@@ -85,8 +85,14 @@ func (a *App) handleCommand(command string) (bool, error) {
 
 func (a *App) handleConnect(addr string) error {
 	clt := client.New()
-	if err := clt.Connect(addr); err != nil {
+	accepted, err := clt.Connect(addr)
+	if err != nil {
 		return err
+	}
+
+	if !accepted {
+		fmt.Println("server not accepted request")
+		return nil
 	}
 
 	a.client = clt

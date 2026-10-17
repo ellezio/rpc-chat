@@ -1,11 +1,21 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"rpc-chat/chat"
 
 	"google.golang.org/grpc"
 )
+
+type server struct {
+	chat.UnimplementedChatServer
+}
+
+func (s *server) RequestChat(_ context.Context, req *chat.RequestChatRequest) (*chat.RequestChatReply, error) {
+	return &chat.RequestChatReply{Accept: true}, nil
+}
 
 func Start(addr string) error {
 	lis, err := net.Listen("tcp", addr)
@@ -14,6 +24,8 @@ func Start(addr string) error {
 	}
 
 	s := grpc.NewServer()
+	chat.RegisterChatServer(s, &server{})
+
 	fmt.Printf("server at %s\n", lis.Addr())
 	return s.Serve(lis)
 }
