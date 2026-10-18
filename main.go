@@ -12,18 +12,19 @@ func main() {
 	e := editor.New(os.Stdin, os.Stdout)
 	e.Start()
 
-	go server.Start(":0", e.GetWriter())
+	go server.Start(":0", e.GetMessageChan())
 
-	a := app.New()
+	a := app.New(e)
+	e.SetPrompt(">> ")
 	for {
-		line, err := e.Readline(">> ")
+		line, err := e.Readline()
 		if err != nil {
 			return
 		}
 
 		line = strings.TrimSpace(line)
 
-		if a.HandleInput(line, e.GetWriter()) {
+		if a.HandleInput(line) {
 			return
 		}
 	}

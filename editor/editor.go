@@ -1,7 +1,6 @@
 package editor
 
 import (
-	"fmt"
 	"io"
 	"os"
 
@@ -31,6 +30,8 @@ type Editor struct {
 	in, out *os.File
 
 	originalState *term.State
+
+	prompt string
 }
 
 func New(in *os.File, out *os.File) *Editor {
@@ -54,16 +55,20 @@ func (e *Editor) Start() {
 			}
 
 			e.inputCh <- input{b: buf, n: n}
-			e.messageCh <- fmt.Sprintf("%v", buf[:n])
+			// e.messageCh <- fmt.Sprintf("%v", buf[:n])
 		}
 	}()
 }
 
-func (e *Editor) Readline(prompt string) (string, error) {
+func (e *Editor) SetPrompt(prompt string) {
+	e.prompt = prompt
+}
+
+func (e *Editor) Readline() (string, error) {
 	e.originalState, _ = term.MakeRaw(int(e.in.Fd()))
 	defer term.Restore(int(e.in.Fd()), e.originalState)
 
-	io.WriteString(e.out, prompt)
+	io.WriteString(e.out, e.prompt)
 
 	for {
 		select {
@@ -93,16 +98,20 @@ func (e *Editor) Readline(prompt string) (string, error) {
 			e.out.Write(inp.b[:inp.n])
 
 		case msg := <-e.messageCh:
-			io.WriteString(e.out, "\r\x1b[2K")
-			io.WriteString(e.out, msg)
-			io.WriteString(e.out, "\r\n")
-
-			io.WriteString(e.out, prompt)
-			e.out.Write(e.linebuf[:e.lineend])
+			e.WriteMessage(msg)
 		}
 	}
 }
 
-func (e *Editor) GetWriter() chan<- string {
+func (e *Editor) GetMessageChan() chan<- string {
 	return e.messageCh
+}
+
+func (e *Editor) WriteMessage(msg string) {
+	io.WriteString(e.out, "\r\x1b[2K")
+	io.WriteString(e.out, msg)
+	io.WriteString(e.out, "\r\n")
+
+	io.WriteString(e.out, e.prompt)
+	e.out.Write(e.linebuf[:e.lineend])
 }

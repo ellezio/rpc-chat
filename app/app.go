@@ -8,19 +8,24 @@ import (
 	"strings"
 )
 
+type MessageWriter interface {
+	WriteMessage(string)
+}
+
 type App struct {
 	client *client.Client
+	msgwr  MessageWriter
 }
 
-func New() *App {
-	return &App{}
+func New(msgwr MessageWriter) *App {
+	return &App{msgwr: msgwr}
 }
 
-func (a *App) HandleInput(input string, msgCh chan<- string) bool {
+func (a *App) HandleInput(input string) bool {
 	if strings.HasPrefix(input, "/") {
 		exit, err := a.handleCommand(input)
 		if err != nil {
-			msgCh <- err.Error()
+			a.msgwr.WriteMessage(err.Error())
 		}
 
 		return exit
@@ -63,8 +68,10 @@ func (a *App) handleConnect(addr string) error {
 	}
 
 	if !accepted {
-		fmt.Println("server not accepted request")
+		a.msgwr.WriteMessage("server not accepted request")
 		return nil
+	} else {
+		a.msgwr.WriteMessage("chat request accepted")
 	}
 
 	a.client = clt

@@ -30,7 +30,7 @@ func (c *Client) Connect(addr string) (bool, error) {
 	accepted, err := c.RequestChat(context.Background())
 	if err != nil {
 		conn.Close()
-		return false, fmt.Errorf("requesting chat: %w")
+		return false, fmt.Errorf("requesting chat: %w", err)
 	}
 
 	if !accepted {
