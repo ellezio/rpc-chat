@@ -17,7 +17,7 @@ func (s *server) RequestChat(_ context.Context, req *chat.RequestChatRequest) (*
 	return &chat.RequestChatReply{Accept: true}, nil
 }
 
-func Start(addr string) error {
+func Start(addr string, msgCh chan<- string) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
@@ -26,6 +26,6 @@ func Start(addr string) error {
 	s := grpc.NewServer()
 	chat.RegisterChatServer(s, &server{})
 
-	fmt.Printf("server at %s\n", lis.Addr())
+	msgCh <- fmt.Sprintf("server at %s", lis.Addr())
 	return s.Serve(lis)
 }

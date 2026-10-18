@@ -1,17 +1,12 @@
 package app
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"iter"
 	"rpc-chat/client"
-	"rpc-chat/server"
 	"strings"
 )
-
-const promptPrefix = ">> "
 
 type App struct {
 	client *client.Client
@@ -21,40 +16,17 @@ func New() *App {
 	return &App{}
 }
 
-func (a *App) Start(in io.Reader, out io.Writer) error {
-	a.startServer()
-
-	scanner := bufio.NewScanner(in)
-
-	for {
-		out.Write([]byte(promptPrefix))
-
-		if !scanner.Scan() {
-			return scanner.Err()
+func (a *App) HandleInput(input string, msgCh chan<- string) bool {
+	if strings.HasPrefix(input, "/") {
+		exit, err := a.handleCommand(input)
+		if err != nil {
+			msgCh <- err.Error()
 		}
 
-		prompt := scanner.Text()
-		prompt = strings.TrimSpace(prompt)
-
-		if strings.HasPrefix(prompt, "/") {
-			exit, err := a.handleCommand(prompt)
-			if err != nil {
-				io.WriteString(out, err.Error())
-				io.WriteString(out, "\n")
-			}
-
-			if exit {
-				return nil
-			}
-		}
-
-		io.WriteString(out, prompt)
-		io.WriteString(out, "\n")
+		return exit
 	}
-}
 
-func (a *App) startServer() {
-	go server.Start(":0")
+	return false
 }
 
 func (a *App) handleCommand(command string) (bool, error) {
