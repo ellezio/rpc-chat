@@ -10,12 +10,14 @@ import (
 )
 
 type Client struct {
-	conn       *grpc.ClientConn
-	chatClient chat.ChatClient
+	conn         *grpc.ClientConn
+	chatClient   chat.ChatClient
+	username     string
+	peerUsername string
 }
 
-func New() *Client {
-	return &Client{}
+func New(username string) *Client {
+	return &Client{username: username}
 }
 
 func (c *Client) Connect(addr string) (bool, error) {
@@ -27,28 +29,22 @@ func (c *Client) Connect(addr string) (bool, error) {
 	c.conn = conn
 	c.chatClient = chat.NewChatClient(conn)
 
-	accepted, err := c.RequestChat(context.Background())
+	reply, err := c.chatClient.RequestChat(context.Background(), &chat.PeerInfo{Username: c.username})
 	if err != nil {
 		conn.Close()
 		return false, fmt.Errorf("requesting chat: %w", err)
 	}
 
-	if !accepted {
+	if !reply.Accept {
 		conn.Close()
+		return reply.Accept, nil
 	}
 
-	return accepted, nil
+	c.peerUsername = reply.PeerInfo.Username
+
+	return reply.Accept, nil
 }
 
 func (c *Client) Close() error {
 	return c.conn.Close()
-}
-
-func (c *Client) RequestChat(ctx context.Context) (bool, error) {
-	reply, err := c.chatClient.RequestChat(ctx, &chat.RequestChatRequest{Name: "edek"})
-	if err != nil {
-		return false, err
-	}
-
-	return reply.Accept, nil
 }

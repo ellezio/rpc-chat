@@ -3,13 +3,19 @@ syntax = "proto3";
 option go_package = "rpc-chat/chat";
 
 service Chat {
-  rpc RequestChat (RequestChatRequest) returns (RequestChatReply) {}
-}
-
-message RequestChatRequest {
-  string name = 1;
+  rpc RequestChat (PeerInfo) returns (RequestChatReply) {}
+  rpc ChatChannel (stream ChatMessage) returns (stream ChatMessage) {}
 }
 
 message RequestChatReply {
   bool accept = 1;
+  PeerInfo peerInfo = 2;
+}
+
+message ChatMessage {
+  string content = 1;
+}
+
+message PeerInfo {
+  string username = 1;
 }

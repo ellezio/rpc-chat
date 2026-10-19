@@ -14,13 +14,14 @@ type MessageWriter interface {
 }
 
 type App struct {
-	client *client.Client
-	server *server.Server
-	msgwr  MessageWriter
+	client   *client.Client
+	server   *server.Server
+	msgwr    MessageWriter
+	username string
 }
 
-func New(msgwr MessageWriter, srv *server.Server) *App {
-	return &App{msgwr: msgwr, server: srv}
+func New(msgwr MessageWriter, srv *server.Server, username string) *App {
+	return &App{msgwr: msgwr, server: srv, username: username}
 }
 
 func (a *App) HandleInput(input string) bool {
@@ -69,7 +70,7 @@ func (a *App) handleCommand(command string) (bool, error) {
 }
 
 func (a *App) handleConnect(addr string) error {
-	clt := client.New()
+	clt := client.New(a.username)
 	accepted, err := clt.Connect(addr)
 	if err != nil {
 		return err

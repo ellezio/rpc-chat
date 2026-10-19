@@ -15,19 +15,21 @@ import (
 type Server struct {
 	chat.UnimplementedChatServer
 
-	msgCh chan<- string
+	msgCh    chan<- string
+	username string
 
 	mu                 sync.Mutex
 	pendingChatRequest map[string]chan<- bool
+	peerUsername       string
 }
 
-func New(msgCh chan<- string) *Server {
-	return &Server{msgCh: msgCh, pendingChatRequest: make(map[string]chan<- bool)}
+func New(msgCh chan<- string, username string) *Server {
+	return &Server{msgCh: msgCh, pendingChatRequest: make(map[string]chan<- bool), username: username}
 }
 
-func (s *Server) RequestChat(ctx context.Context, req *chat.RequestChatRequest) (*chat.RequestChatReply, error) {
+func (s *Server) RequestChat(ctx context.Context, pi *chat.PeerInfo) (*chat.RequestChatReply, error) {
 	p, _ := peer.FromContext(ctx)
-	s.msgCh <- fmt.Sprintf("Incoming chat request from: %s(%s)", req.Name, p.Addr)
+	s.msgCh <- fmt.Sprintf("Incoming chat request from: %s(%s)", pi.Username, p.Addr)
 
 	ch := make(chan bool)
 	s.mu.Lock()
@@ -40,14 +42,17 @@ func (s *Server) RequestChat(ctx context.Context, req *chat.RequestChatRequest) 
 
 	select {
 	case accept = <-ch:
+		s.mu.Lock()
+		s.peerUsername = pi.Username
+		s.mu.Unlock()
 	case <-deadline:
-		s.msgCh <- fmt.Sprintf("%s(%s) Chat request has expired", req.Name, p.Addr)
+		s.msgCh <- fmt.Sprintf("%s(%s) Chat request has expired", pi.Username, p.Addr)
 		s.mu.Lock()
 		delete(s.pendingChatRequest, p.Addr.String())
 		s.mu.Unlock()
 	}
 
-	return &chat.RequestChatReply{Accept: accept}, nil
+	return &chat.RequestChatReply{Accept: accept, PeerInfo: &chat.PeerInfo{Username: s.username}}, nil
 }
 
 func (s *Server) ReplyChatRequest(id string, accept bool) {
@@ -58,7 +63,6 @@ func (s *Server) ReplyChatRequest(id string, accept bool) {
 		delete(s.pendingChatRequest, id)
 		ch <- accept
 	}
-
 }
 
 func (s *Server) Start(addr string) error {
