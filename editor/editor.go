@@ -99,6 +99,8 @@ func (e *Editor) Readline() (string, error) {
 
 		case msg := <-e.messageCh:
 			e.WriteMessage(msg)
+			io.WriteString(e.out, e.prompt)
+			e.out.Write(e.linebuf[:e.lineend])
 		}
 	}
 }
@@ -107,11 +109,12 @@ func (e *Editor) GetMessageChan() chan<- string {
 	return e.messageCh
 }
 
+// WriteMessage should only be used on the same goroutine the Readline is used.
+// This method is not thread safe.
+//
+// If needed to write message from other goroutine use channel returned from GetMessageChan.
 func (e *Editor) WriteMessage(msg string) {
 	io.WriteString(e.out, "\r\x1b[2K")
 	io.WriteString(e.out, msg)
 	io.WriteString(e.out, "\r\n")
-
-	io.WriteString(e.out, e.prompt)
-	e.out.Write(e.linebuf[:e.lineend])
 }
