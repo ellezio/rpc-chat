@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"rpc-chat/client"
+	"rpc-chat/server"
 	"strings"
 )
 
@@ -14,11 +15,12 @@ type MessageWriter interface {
 
 type App struct {
 	client *client.Client
+	server *server.Server
 	msgwr  MessageWriter
 }
 
-func New(msgwr MessageWriter) *App {
-	return &App{msgwr: msgwr}
+func New(msgwr MessageWriter, srv *server.Server) *App {
+	return &App{msgwr: msgwr, server: srv}
 }
 
 func (a *App) HandleInput(input string) bool {
@@ -55,6 +57,12 @@ func (a *App) handleCommand(command string) (bool, error) {
 		if err := a.handleConnect(addr); err != nil {
 			return false, fmt.Errorf("failed to connect: %w", err)
 		}
+	case "/accept":
+		addr, ok := next()
+		if !ok {
+			return false, errors.New("expected address")
+		}
+		a.server.ReplyChatRequest(addr, true)
 	}
 
 	return false, nil

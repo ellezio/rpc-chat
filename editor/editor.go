@@ -37,7 +37,7 @@ type Editor struct {
 func New(in *os.File, out *os.File) *Editor {
 	return &Editor{
 		inputCh:   make(chan input, 1),
-		messageCh: make(chan string, 1),
+		messageCh: make(chan string, 8),
 		in:        in,
 		out:       out,
 	}

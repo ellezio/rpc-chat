@@ -12,9 +12,11 @@ func main() {
 	e := editor.New(os.Stdin, os.Stdout)
 	e.Start()
 
-	go server.Start(":0", e.GetMessageChan())
+	srv := server.New(e.GetMessageChan())
+	go srv.Start(":0")
 
-	a := app.New(e)
+	a := app.New(e, srv)
+
 	e.SetPrompt(">> ")
 	for {
 		line, err := e.Readline()
