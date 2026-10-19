@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"rpc-chat/app"
@@ -15,7 +16,7 @@ var username = flag.String("username", "", "Name of user shown in chat")
 func main() {
 	flag.Parse()
 	if *username == "" {
-		io.WriteString(os.Stderr, "-username flag is required")
+		io.WriteString(os.Stderr, "-username [username] flag is required")
 		os.Exit(1)
 	}
 
@@ -23,11 +24,10 @@ func main() {
 	e.Start()
 
 	srv := server.New(e.GetMessageChan(), *username)
+	a := app.New(e, srv, *username)
 	go srv.Start(":0")
 
-	a := app.New(e, srv, *username)
-
-	e.SetPrompt(">> ")
+	e.SetPrompt(fmt.Sprintf("[%s]> ", *username))
 	for {
 		line, err := e.Readline()
 		if err != nil {

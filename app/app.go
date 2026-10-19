@@ -4,27 +4,51 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"rpc-chat/chat"
 	"rpc-chat/client"
 	"rpc-chat/server"
 	"strings"
 )
 
 type MessageWriter interface {
+	client.AsyncMessageWriter
 	WriteMessage(string)
 }
 
 type App struct {
-	client   *client.Client
-	server   *server.Server
-	msgwr    MessageWriter
-	username string
+	client     *client.Client
+	server     *server.Server
+	msgwr      MessageWriter
+	username   string
+	sendMsg    chat.SendChatMessageFn
+	leaveChat  chat.LeaveChatFn
+	chatClosed chan struct{}
 }
 
 func New(msgwr MessageWriter, srv *server.Server, username string) *App {
-	return &App{msgwr: msgwr, server: srv, username: username}
+	a := &App{
+		msgwr:      msgwr,
+		server:     srv,
+		username:   username,
+		chatClosed: make(chan struct{}),
+	}
+
+	srv.ChatClosed = a.chatClosed
+
+	return a
 }
 
 func (a *App) HandleInput(input string) bool {
+	select {
+	case <-a.chatClosed:
+		if a.leaveChat != nil {
+			a.leaveChat()
+		}
+		a.sendMsg = nil
+		a.leaveChat = nil
+	default:
+	}
+
 	if strings.HasPrefix(input, "/") {
 		exit, err := a.handleCommand(input)
 		if err != nil {
@@ -32,6 +56,15 @@ func (a *App) HandleInput(input string) bool {
 		}
 
 		return exit
+	}
+
+	if a.sendMsg != nil && a.leaveChat != nil {
+		err := a.sendMsg(&chat.ChatMessage{Content: input})
+		if err != nil {
+			a.leaveChat()
+			a.sendMsg = nil
+			a.leaveChat = nil
+		}
 	}
 
 	return false
@@ -63,20 +96,28 @@ func (a *App) handleCommand(command string) (bool, error) {
 		if !ok {
 			return false, errors.New("expected address")
 		}
-		a.server.ReplyChatRequest(addr, true)
+		a.sendMsg, a.leaveChat, _ = a.server.ReplyChatRequest(addr, true)
+
+	case "/leave":
+		if a.leaveChat != nil {
+			a.leaveChat()
+			a.sendMsg = nil
+			a.leaveChat = nil
+			a.msgwr.WriteMessage("you left the chat")
+		}
 	}
 
 	return false, nil
 }
 
 func (a *App) handleConnect(addr string) error {
-	clt := client.New(a.username)
-	accepted, err := clt.Connect(addr)
+	clt := client.New(a.username, a.msgwr)
+	sendMsg, leaveChat, err := clt.Connect(addr)
 	if err != nil {
 		return err
 	}
 
-	if !accepted {
+	if sendMsg == nil {
 		a.msgwr.WriteMessage("server not accepted request")
 		return nil
 	} else {
@@ -84,5 +125,7 @@ func (a *App) handleConnect(addr string) error {
 	}
 
 	a.client = clt
+	a.sendMsg = sendMsg
+	a.leaveChat = leaveChat
 	return nil
 }

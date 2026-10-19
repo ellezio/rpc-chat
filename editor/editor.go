@@ -105,6 +105,10 @@ func (e *Editor) Readline() (string, error) {
 	}
 }
 
+func (e *Editor) AsyncWriteMessage(msg string) {
+	e.messageCh <- msg
+}
+
 func (e *Editor) GetMessageChan() chan<- string {
 	return e.messageCh
 }
@@ -112,7 +116,7 @@ func (e *Editor) GetMessageChan() chan<- string {
 // WriteMessage should only be used on the same goroutine the Readline is used.
 // This method is not thread safe.
 //
-// If needed to write message from other goroutine use channel returned from GetMessageChan.
+// If needed to write message from other goroutine use channel returned from GetMessageChan or use AsyncWriteMessage.
 func (e *Editor) WriteMessage(msg string) {
 	io.WriteString(e.out, "\r\x1b[2K")
 	io.WriteString(e.out, msg)

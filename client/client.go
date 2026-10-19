@@ -2,49 +2,82 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"rpc-chat/chat"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
+type AsyncMessageWriter interface {
+	AsyncWriteMessage(string)
+}
+
 type Client struct {
-	conn         *grpc.ClientConn
-	chatClient   chat.ChatClient
-	username     string
-	peerUsername string
+	msgwr    AsyncMessageWriter
+	username string
 }
 
-func New(username string) *Client {
-	return &Client{username: username}
+func New(username string, msgwr AsyncMessageWriter) *Client {
+	return &Client{username: username, msgwr: msgwr}
 }
 
-func (c *Client) Connect(addr string) (bool, error) {
+func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn, error) {
+	ctx := context.Background()
+
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return false, fmt.Errorf("creating gRPC client: %w", err)
+		return nil, nil, fmt.Errorf("creating gRPC client: %w", err)
 	}
 
-	c.conn = conn
-	c.chatClient = chat.NewChatClient(conn)
+	chatClient := chat.NewChatClient(conn)
 
-	reply, err := c.chatClient.RequestChat(context.Background(), &chat.PeerInfo{Username: c.username})
+	reply, err := chatClient.RequestChat(ctx, &chat.PeerInfo{Username: c.username})
 	if err != nil {
 		conn.Close()
-		return false, fmt.Errorf("requesting chat: %w", err)
+		return nil, nil, fmt.Errorf("requesting chat: %w", err)
 	}
 
 	if !reply.Accept {
 		conn.Close()
-		return reply.Accept, nil
+		return nil, nil, nil
 	}
 
-	c.peerUsername = reply.PeerInfo.Username
+	stream, err := chatClient.StartChatChannel(ctx)
+	if err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("starting chat channel: %w", err)
+	}
 
-	return reply.Accept, nil
-}
+	go func() {
+		peerUsername := reply.PeerInfo.Username
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					c.msgwr.AsyncWriteMessage(fmt.Sprintf("%s left the chat", peerUsername))
+					break
+				}
 
-func (c *Client) Close() error {
-	return c.conn.Close()
+				if status.Code(err) == codes.Canceled {
+					break
+				}
+
+				c.msgwr.AsyncWriteMessage("ERROR: unexpected error occurred when reading peer's chat message: " + err.Error())
+				break
+			}
+
+			c.msgwr.AsyncWriteMessage(chat.FormatMessage(msg.Content, peerUsername))
+		}
+		_ = conn.Close()
+	}()
+
+	return stream.Send, func() {
+		_ = stream.CloseSend()
+		_ = conn.Close()
+	}, nil
 }

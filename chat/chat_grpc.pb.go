@@ -19,8 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Chat_RequestChat_FullMethodName = "/Chat/RequestChat"
-	Chat_ChatChannel_FullMethodName = "/Chat/ChatChannel"
+	Chat_RequestChat_FullMethodName      = "/Chat/RequestChat"
+	Chat_StartChatChannel_FullMethodName = "/Chat/StartChatChannel"
 )
 
 // ChatClient is the client API for Chat service.
@@ -28,7 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChatClient interface {
 	RequestChat(ctx context.Context, in *PeerInfo, opts ...grpc.CallOption) (*RequestChatReply, error)
-	ChatChannel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error)
+	StartChatChannel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error)
 }
 
 type chatClient struct {
@@ -49,9 +49,9 @@ func (c *chatClient) RequestChat(ctx context.Context, in *PeerInfo, opts ...grpc
 	return out, nil
 }
 
-func (c *chatClient) ChatChannel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error) {
+func (c *chatClient) StartChatChannel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Chat_ServiceDesc.Streams[0], Chat_ChatChannel_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Chat_ServiceDesc.Streams[0], Chat_StartChatChannel_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -60,14 +60,14 @@ func (c *chatClient) ChatChannel(ctx context.Context, opts ...grpc.CallOption) (
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Chat_ChatChannelClient = grpc.BidiStreamingClient[ChatMessage, ChatMessage]
+type Chat_StartChatChannelClient = grpc.BidiStreamingClient[ChatMessage, ChatMessage]
 
 // ChatServer is the server API for Chat service.
 // All implementations must embed UnimplementedChatServer
 // for forward compatibility.
 type ChatServer interface {
 	RequestChat(context.Context, *PeerInfo) (*RequestChatReply, error)
-	ChatChannel(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error
+	StartChatChannel(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error
 	mustEmbedUnimplementedChatServer()
 }
 
@@ -81,8 +81,8 @@ type UnimplementedChatServer struct{}
 func (UnimplementedChatServer) RequestChat(context.Context, *PeerInfo) (*RequestChatReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestChat not implemented")
 }
-func (UnimplementedChatServer) ChatChannel(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error {
-	return status.Errorf(codes.Unimplemented, "method ChatChannel not implemented")
+func (UnimplementedChatServer) StartChatChannel(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method StartChatChannel not implemented")
 }
 func (UnimplementedChatServer) mustEmbedUnimplementedChatServer() {}
 func (UnimplementedChatServer) testEmbeddedByValue()              {}
@@ -123,12 +123,12 @@ func _Chat_RequestChat_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Chat_ChatChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ChatServer).ChatChannel(&grpc.GenericServerStream[ChatMessage, ChatMessage]{ServerStream: stream})
+func _Chat_StartChatChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ChatServer).StartChatChannel(&grpc.GenericServerStream[ChatMessage, ChatMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Chat_ChatChannelServer = grpc.BidiStreamingServer[ChatMessage, ChatMessage]
+type Chat_StartChatChannelServer = grpc.BidiStreamingServer[ChatMessage, ChatMessage]
 
 // Chat_ServiceDesc is the grpc.ServiceDesc for Chat service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -144,8 +144,8 @@ var Chat_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ChatChannel",
-			Handler:       _Chat_ChatChannel_Handler,
+			StreamName:    "StartChatChannel",
+			Handler:       _Chat_StartChatChannel_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

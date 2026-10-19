@@ -172,10 +172,10 @@ const file_chat_chat_proto_rawDesc = "" +
 	"\vChatMessage\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\"&\n" +
 	"\bPeerInfo\x12\x1a\n" +
-	"\busername\x18\x01 \x01(\tR\busername2f\n" +
+	"\busername\x18\x01 \x01(\tR\busername2k\n" +
 	"\x04Chat\x12-\n" +
-	"\vRequestChat\x12\t.PeerInfo\x1a\x11.RequestChatReply\"\x00\x12/\n" +
-	"\vChatChannel\x12\f.ChatMessage\x1a\f.ChatMessage\"\x00(\x010\x01B\x0fZ\rrpc-chat/chatb\x06proto3"
+	"\vRequestChat\x12\t.PeerInfo\x1a\x11.RequestChatReply\"\x00\x124\n" +
+	"\x10StartChatChannel\x12\f.ChatMessage\x1a\f.ChatMessage\"\x00(\x010\x01B\x0fZ\rrpc-chat/chatb\x06proto3"
 
 var (
 	file_chat_chat_proto_rawDescOnce sync.Once
@@ -198,9 +198,9 @@ var file_chat_chat_proto_goTypes = []any{
 var file_chat_chat_proto_depIdxs = []int32{
 	2, // 0: RequestChatReply.peerInfo:type_name -> PeerInfo
 	2, // 1: Chat.RequestChat:input_type -> PeerInfo
-	1, // 2: Chat.ChatChannel:input_type -> ChatMessage
+	1, // 2: Chat.StartChatChannel:input_type -> ChatMessage
 	0, // 3: Chat.RequestChat:output_type -> RequestChatReply
-	1, // 4: Chat.ChatChannel:output_type -> ChatMessage
+	1, // 4: Chat.StartChatChannel:output_type -> ChatMessage
 	3, // [3:5] is the sub-list for method output_type
 	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
