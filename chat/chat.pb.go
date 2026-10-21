@@ -22,11 +22,12 @@ const (
 )
 
 type RequestChatReply struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Accept        bool                   `protobuf:"varint,1,opt,name=accept,proto3" json:"accept,omitempty"`
-	PeerInfo      *PeerInfo              `protobuf:"bytes,2,opt,name=peerInfo,proto3" json:"peerInfo,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Accept          bool                   `protobuf:"varint,1,opt,name=accept,proto3" json:"accept,omitempty"`
+	PeerInfo        *PeerInfo              `protobuf:"bytes,2,opt,name=peerInfo,proto3" json:"peerInfo,omitempty"`
+	RejectionReason string                 `protobuf:"bytes,3,opt,name=rejectionReason,proto3" json:"rejectionReason,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RequestChatReply) Reset() {
@@ -71,6 +72,13 @@ func (x *RequestChatReply) GetPeerInfo() *PeerInfo {
 		return x.PeerInfo
 	}
 	return nil
+}
+
+func (x *RequestChatReply) GetRejectionReason() string {
+	if x != nil {
+		return x.RejectionReason
+	}
+	return ""
 }
 
 type ChatMessage struct {
@@ -165,10 +173,11 @@ var File_chat_chat_proto protoreflect.FileDescriptor
 
 const file_chat_chat_proto_rawDesc = "" +
 	"\n" +
-	"\x0fchat/chat.proto\"Q\n" +
+	"\x0fchat/chat.proto\"{\n" +
 	"\x10RequestChatReply\x12\x16\n" +
 	"\x06accept\x18\x01 \x01(\bR\x06accept\x12%\n" +
-	"\bpeerInfo\x18\x02 \x01(\v2\t.PeerInfoR\bpeerInfo\"'\n" +
+	"\bpeerInfo\x18\x02 \x01(\v2\t.PeerInfoR\bpeerInfo\x12(\n" +
+	"\x0frejectionReason\x18\x03 \x01(\tR\x0frejectionReason\"'\n" +
 	"\vChatMessage\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\"&\n" +
 	"\bPeerInfo\x12\x1a\n" +

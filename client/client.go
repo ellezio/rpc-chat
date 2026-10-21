@@ -43,6 +43,7 @@ func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn,
 	}
 
 	if !reply.Accept {
+		c.msgwr.WriteMessage(fmt.Sprintf("chat rejected, peer's reason: %s", reply.RejectionReason))
 		conn.Close()
 		return nil, nil, nil
 	}

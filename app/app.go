@@ -40,11 +40,7 @@ func New(msgwr MessageWriter, srv *server.Server, username string) *App {
 func (a *App) HandleInput(input string) bool {
 	select {
 	case <-a.chatClosed:
-		if a.leaveChat != nil {
-			a.leaveChat()
-		}
-		a.sendMsg = nil
-		a.leaveChat = nil
+		a.handleLeaveChat()
 	default:
 	}
 
@@ -57,12 +53,10 @@ func (a *App) HandleInput(input string) bool {
 		return exit
 	}
 
-	if a.sendMsg != nil && a.leaveChat != nil {
+	if a.sendMsg != nil {
 		err := a.sendMsg(&chat.ChatMessage{Content: input})
 		if err != nil {
-			a.leaveChat()
-			a.sendMsg = nil
-			a.leaveChat = nil
+			a.handleLeaveChat()
 		}
 	}
 
@@ -104,10 +98,7 @@ func (a *App) handleCommand(command string) (bool, error) {
 		a.leaveChat = leaveChat
 
 	case "/leave":
-		if a.leaveChat != nil {
-			a.leaveChat()
-			a.sendMsg = nil
-			a.leaveChat = nil
+		if a.handleLeaveChat() {
 			a.msgwr.WriteMessage("you left the chat")
 		}
 	}
@@ -117,20 +108,39 @@ func (a *App) handleCommand(command string) (bool, error) {
 
 func (a *App) handleConnect(addr string) error {
 	clt := client.New(a.username, a.msgwr)
+
+	a.server.RejectIncomingConnection("connecting to chat")
+
 	sendMsg, leaveChat, err := clt.Connect(addr)
 	if err != nil {
+		a.server.AllowIncomingConnection()
 		return err
 	}
 
 	if sendMsg == nil {
 		a.msgwr.WriteMessage("server not accepted request")
+		a.server.AllowIncomingConnection()
 		return nil
-	} else {
-		a.msgwr.WriteMessage("chat request accepted")
 	}
+
+	a.msgwr.WriteMessage("chat request accepted")
+	a.server.RejectIncomingConnection("in chat")
 
 	a.client = clt
 	a.sendMsg = sendMsg
 	a.leaveChat = leaveChat
 	return nil
+}
+
+func (a *App) handleLeaveChat() bool {
+	a.sendMsg = nil
+	a.server.AllowIncomingConnection()
+
+	if a.leaveChat != nil {
+		a.leaveChat()
+		a.leaveChat = nil
+		return true
+	}
+
+	return false
 }

@@ -31,9 +31,11 @@ type Server struct {
 	msgwr    MessageWriter
 	username string
 
-	mu                 sync.Mutex
-	pendingChatRequest map[string]chan<- bool
-	peerUsername       string
+	mu                     sync.Mutex
+	pendingChatRequest     map[string]chan<- bool
+	peerUsername           string
+	rejectConnection       bool
+	rejectConnectionReason string
 
 	startChat chan StartChatMessage
 
@@ -50,6 +52,18 @@ func New(msgwr MessageWriter, username string) *Server {
 }
 
 func (s *Server) RequestChat(ctx context.Context, pi *chat.PeerInfo) (*chat.RequestChatReply, error) {
+	s.mu.Lock()
+	if s.rejectConnection {
+		reply := &chat.RequestChatReply{
+			Accept:          false,
+			PeerInfo:        &chat.PeerInfo{Username: s.username},
+			RejectionReason: s.rejectConnectionReason,
+		}
+		s.mu.Unlock()
+		return reply, nil
+	}
+	s.mu.Unlock()
+
 	p, _ := peer.FromContext(ctx)
 	s.msgwr.WriteMessage(fmt.Sprintf("Incoming chat request from: %s(%s)", pi.Username, p.Addr))
 
@@ -140,6 +154,20 @@ func (s *Server) StartChatChannel(stream grpc.BidiStreamingServer[chat.ChatMessa
 	<-done
 
 	return nil
+}
+
+func (s *Server) AllowIncomingConnection() {
+	s.mu.Lock()
+	s.rejectConnection = false
+	s.rejectConnectionReason = ""
+	s.mu.Unlock()
+}
+
+func (s *Server) RejectIncomingConnection(reason string) {
+	s.mu.Lock()
+	s.rejectConnection = true
+	s.rejectConnectionReason = reason
+	s.mu.Unlock()
 }
 
 func (s *Server) Start(addr string) error {

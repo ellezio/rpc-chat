@@ -10,6 +10,7 @@ service Chat {
 message RequestChatReply {
   bool accept = 1;
   PeerInfo peerInfo = 2;
+  string rejectionReason = 3;
 }
 
 message ChatMessage {
