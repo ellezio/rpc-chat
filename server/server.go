@@ -78,6 +78,9 @@ func (s *Server) ReplyChatRequest(id string, accept bool) (chat.SendChatMessageF
 	if ch, ok := s.pendingChatRequest[id]; ok {
 		delete(s.pendingChatRequest, id)
 		ch <- accept
+	} else {
+		s.mu.Unlock()
+		return nil, nil, fmt.Errorf("no incoming connection from %s", id)
 	}
 	s.mu.Unlock()
 

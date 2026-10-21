@@ -96,7 +96,13 @@ func (a *App) handleCommand(command string) (bool, error) {
 		if !ok {
 			return false, errors.New("expected address")
 		}
-		a.sendMsg, a.leaveChat, _ = a.server.ReplyChatRequest(addr, true)
+		sendMsg, leaveChat, err := a.server.ReplyChatRequest(addr, true)
+		if err != nil {
+			return false, err
+		}
+
+		a.sendMsg = sendMsg
+		a.leaveChat = leaveChat
 
 	case "/leave":
 		if a.leaveChat != nil {
