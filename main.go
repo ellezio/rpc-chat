@@ -27,9 +27,9 @@ func main() {
 	a := app.New(e, srv, *username)
 	go srv.Start(":0")
 
-	e.SetPrompt(fmt.Sprintf("[%s]> ", *username))
+	prompt := fmt.Sprintf("[%s]> ", *username)
 	for {
-		line, err := e.Readline()
+		line, err := e.Readline(prompt)
 		if err != nil {
 			return
 		}

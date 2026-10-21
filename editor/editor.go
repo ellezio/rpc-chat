@@ -30,8 +30,6 @@ type Editor struct {
 	in, out *os.File
 
 	originalState *term.State
-
-	prompt string
 }
 
 func New(in *os.File, out *os.File) *Editor {
@@ -60,15 +58,11 @@ func (e *Editor) Start() {
 	}()
 }
 
-func (e *Editor) SetPrompt(prompt string) {
-	e.prompt = prompt
-}
-
-func (e *Editor) Readline() (string, error) {
+func (e *Editor) Readline(prompt string) (string, error) {
 	e.originalState, _ = term.MakeRaw(int(e.in.Fd()))
 	defer term.Restore(int(e.in.Fd()), e.originalState)
 
-	io.WriteString(e.out, e.prompt)
+	io.WriteString(e.out, prompt)
 
 	for {
 		select {
@@ -99,7 +93,7 @@ func (e *Editor) Readline() (string, error) {
 
 		case msg := <-e.messageCh:
 			e.WriteMessage(msg)
-			io.WriteString(e.out, e.prompt)
+			io.WriteString(e.out, prompt)
 			e.out.Write(e.linebuf[:e.lineend])
 		}
 	}
