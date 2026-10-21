@@ -4,16 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"rpc-chat/chat"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
 )
 
 type MessageWriter interface {
@@ -39,7 +37,7 @@ type Server struct {
 
 	startChat chan StartChatMessage
 
-	ChatClosed chan<- struct{}
+	OnChatClose func()
 }
 
 func New(msgwr MessageWriter, username string) *Server {
@@ -115,8 +113,10 @@ func (s *Server) ReplyChatRequest(id string, accept bool) (chat.SendChatMessageF
 }
 
 func (s *Server) StartChatChannel(stream grpc.BidiStreamingServer[chat.ChatMessage, chat.ChatMessage]) error {
+	serverClosedChat := atomic.Bool{}
 	done := make(chan struct{})
 	closeChat := func() {
+		serverClosedChat.Store(true)
 		select {
 		case done <- struct{}{}:
 		default:
@@ -128,29 +128,21 @@ func (s *Server) StartChatChannel(stream grpc.BidiStreamingServer[chat.ChatMessa
 		leaveChat: closeChat,
 	}
 
-	// When StartChatChannel returns the contex is canceled so the gorouting terminates
+	// When StartChatChannel returns, the context is canceled so the gorouting terminates
 	go func() {
-		for {
-			msg, err := stream.Recv()
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					s.msgwr.WriteMessage(fmt.Sprintf("%s left the chat", s.peerUsername))
-					break
-				}
-
-				if status.Code(err) == codes.Canceled {
-					break
-				}
-
-				s.msgwr.WriteMessage("ERROR: " + err.Error())
-				break
-			}
-
-			s.msgwr.WriteMessage(chat.FormatMessage(msg.Content, s.peerUsername))
+		err := chat.ReciveStreamMessages(stream.Recv, s.peerUsername, s.msgwr)
+		if err != nil {
+			s.msgwr.WriteMessage("ERROR: " + err.Error())
 		}
 
-		s.ChatClosed <- struct{}{}
+		if serverClosedChat.Load() {
+			s.msgwr.WriteMessage("you closed the chat")
+		} else {
+			s.msgwr.WriteMessage(fmt.Sprintf("%s closed the chat", s.peerUsername))
+		}
+
 		closeChat()
+		s.OnChatClose()
 	}()
 
 	<-done

@@ -1,13 +1,19 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"iter"
-	"rpc-chat/chat"
-	"rpc-chat/client"
-	"rpc-chat/server"
 	"strings"
+	"sync/atomic"
+	"time"
+
+	"rpc-chat/chat"
+	"rpc-chat/server"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type MessageWriter interface {
@@ -15,33 +21,31 @@ type MessageWriter interface {
 }
 
 type App struct {
-	client     *client.Client
-	server     *server.Server
-	msgwr      MessageWriter
-	username   string
-	sendMsg    chat.SendChatMessageFn
-	leaveChat  chat.LeaveChatFn
-	chatClosed chan struct{}
+	server    *server.Server
+	msgwr     MessageWriter
+	username  string
+	sendMsg   chat.SendChatMessageFn
+	leaveChat chat.LeaveChatFn
+	inChat    atomic.Bool
 }
 
 func New(msgwr MessageWriter, srv *server.Server, username string) *App {
 	a := &App{
-		msgwr:      msgwr,
-		server:     srv,
-		username:   username,
-		chatClosed: make(chan struct{}),
+		msgwr:    msgwr,
+		server:   srv,
+		username: username,
 	}
 
-	srv.ChatClosed = a.chatClosed
+	a.server.OnChatClose = a.handleCloseChat
 
 	return a
 }
 
 func (a *App) HandleInput(input string) bool {
-	select {
-	case <-a.chatClosed:
-		a.handleLeaveChat()
-	default:
+	inChat := a.inChat.Load()
+	if (a.sendMsg != nil || a.leaveChat != nil) && !inChat {
+		a.sendMsg = nil
+		a.leaveChat = nil
 	}
 
 	if strings.HasPrefix(input, "/") {
@@ -53,10 +57,10 @@ func (a *App) HandleInput(input string) bool {
 		return exit
 	}
 
-	if a.sendMsg != nil {
+	if inChat {
 		err := a.sendMsg(&chat.ChatMessage{Content: input})
 		if err != nil {
-			a.handleLeaveChat()
+			a.leaveChat()
 		}
 	}
 
@@ -76,8 +80,9 @@ func (a *App) handleCommand(command string) (bool, error) {
 	switch cmd {
 	case "/exit":
 		return true, nil
+
 	case "/connect":
-		if a.isInChat() {
+		if a.inChat.Load() {
 			return false, errors.New("cannot connect, already in chat")
 		}
 
@@ -88,8 +93,9 @@ func (a *App) handleCommand(command string) (bool, error) {
 		if err := a.handleConnect(addr); err != nil {
 			return false, fmt.Errorf("failed to connect: %w", err)
 		}
+
 	case "/accept":
-		if a.isInChat() {
+		if a.inChat.Load() {
 			return false, errors.New("cannot accept in chat")
 		}
 
@@ -102,12 +108,13 @@ func (a *App) handleCommand(command string) (bool, error) {
 			return false, err
 		}
 
-		a.sendMsg = sendMsg
-		a.leaveChat = leaveChat
+		a.handleStartChat(sendMsg, leaveChat)
 
 	case "/leave":
-		if a.handleLeaveChat() {
-			a.msgwr.WriteMessage("you left the chat")
+		if a.inChat.Load() {
+			a.leaveChat()
+		} else {
+			return false, errors.New("not in chat")
 		}
 	}
 
@@ -115,42 +122,79 @@ func (a *App) handleCommand(command string) (bool, error) {
 }
 
 func (a *App) handleConnect(addr string) error {
-	clt := client.New(a.username, a.msgwr)
-
 	a.server.RejectIncomingConnection("connecting to chat")
 
-	sendMsg, leaveChat, err := clt.Connect(addr)
-	if err != nil {
+	if err := a.connect(addr); err != nil {
 		a.server.AllowIncomingConnection()
 		return err
 	}
 
-	if sendMsg == nil {
-		a.server.AllowIncomingConnection()
-		return nil
-	}
-
-	a.server.RejectIncomingConnection("in chat")
-
-	a.client = clt
-	a.sendMsg = sendMsg
-	a.leaveChat = leaveChat
 	return nil
 }
 
-func (a *App) handleLeaveChat() bool {
-	a.sendMsg = nil
-	a.server.AllowIncomingConnection()
-
-	if a.leaveChat != nil {
-		a.leaveChat()
-		a.leaveChat = nil
-		return true
+func (a *App) connect(addr string) error {
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("creating gRPC client: %w", err)
 	}
 
-	return false
+	chatClient := chat.NewChatClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	reply, err := chatClient.RequestChat(ctx, &chat.PeerInfo{Username: a.username})
+	cancel()
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("requesting chat: %w", err)
+	}
+
+	if !reply.Accept {
+		conn.Close()
+		return fmt.Errorf("chat rejected, peer's reason: %s", reply.RejectionReason)
+	}
+
+	stream, err := chatClient.StartChatChannel(context.Background())
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("starting chat channel: %w", err)
+	}
+
+	leaveChat := func() {
+		_ = stream.CloseSend()
+		_ = conn.Close()
+		a.handleCloseChat()
+	}
+
+	go func() {
+		peerUsername := reply.PeerInfo.Username
+		err := chat.ReciveStreamMessages(stream.Recv, peerUsername, a.msgwr)
+		if err != nil {
+			a.msgwr.WriteMessage("ERROR: " + err.Error())
+		}
+
+		if a.inChat.Load() {
+			a.msgwr.WriteMessage(fmt.Sprintf("%s closed the chat", peerUsername))
+		} else {
+			a.msgwr.WriteMessage("you closed the chat")
+		}
+
+		leaveChat()
+	}()
+
+	a.handleStartChat(stream.Send, leaveChat)
+
+	return nil
 }
 
-func (a *App) isInChat() bool {
-	return a.sendMsg != nil
+func (a *App) handleStartChat(s chat.SendChatMessageFn, l chat.LeaveChatFn) {
+	a.sendMsg = s
+	a.leaveChat = l
+	a.inChat.Store(true)
+	a.server.RejectIncomingConnection("in chat")
+}
+
+// the cleanup of sendMsg and leaveChat is processed on next input so this method is safe to use concurrently
+func (a *App) handleCloseChat() {
+	a.inChat.Store(false)
+	a.server.AllowIncomingConnection()
 }
