@@ -23,13 +23,13 @@ func main() {
 	e := editor.New(os.Stdin, os.Stdout)
 	e.Start()
 
-	srv := server.New(e.GetMessageChan(), *username)
+	srv := server.New(e, *username)
 	a := app.New(e, srv, *username)
 	go srv.Start(":0")
 
-	prompt := fmt.Sprintf("[%s]> ", *username)
+	e.SetPrompt(fmt.Sprintf("[%s]> ", *username))
 	for {
-		line, err := e.Readline(prompt)
+		line, err := e.Readline()
 		if err != nil {
 			return
 		}

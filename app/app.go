@@ -11,7 +11,6 @@ import (
 )
 
 type MessageWriter interface {
-	client.AsyncMessageWriter
 	WriteMessage(string)
 }
 

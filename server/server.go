@@ -16,6 +16,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type MessageWriter interface {
+	WriteMessage(string)
+}
+
 type StartChatMessage struct {
 	sendMsg   chat.SendChatMessageFn
 	leaveChat chat.LeaveChatFn
@@ -24,7 +28,7 @@ type StartChatMessage struct {
 type Server struct {
 	chat.UnimplementedChatServer
 
-	msgCh    chan<- string
+	msgwr    MessageWriter
 	username string
 
 	mu                 sync.Mutex
@@ -36,9 +40,9 @@ type Server struct {
 	ChatClosed chan<- struct{}
 }
 
-func New(msgCh chan<- string, username string) *Server {
+func New(msgwr MessageWriter, username string) *Server {
 	return &Server{
-		msgCh:              msgCh,
+		msgwr:              msgwr,
 		pendingChatRequest: make(map[string]chan<- bool),
 		username:           username,
 		startChat:          make(chan StartChatMessage),
@@ -47,7 +51,7 @@ func New(msgCh chan<- string, username string) *Server {
 
 func (s *Server) RequestChat(ctx context.Context, pi *chat.PeerInfo) (*chat.RequestChatReply, error) {
 	p, _ := peer.FromContext(ctx)
-	s.msgCh <- fmt.Sprintf("Incoming chat request from: %s(%s)", pi.Username, p.Addr)
+	s.msgwr.WriteMessage(fmt.Sprintf("Incoming chat request from: %s(%s)", pi.Username, p.Addr))
 
 	ch := make(chan bool)
 	s.mu.Lock()
@@ -64,7 +68,7 @@ func (s *Server) RequestChat(ctx context.Context, pi *chat.PeerInfo) (*chat.Requ
 		s.peerUsername = pi.Username
 		s.mu.Unlock()
 	case <-deadline:
-		s.msgCh <- fmt.Sprintf("%s(%s) Chat request has expired", pi.Username, p.Addr)
+		s.msgwr.WriteMessage(fmt.Sprintf("%s(%s) Chat request has expired", pi.Username, p.Addr))
 		s.mu.Lock()
 		delete(s.pendingChatRequest, p.Addr.String())
 		s.mu.Unlock()
@@ -114,7 +118,7 @@ func (s *Server) StartChatChannel(stream grpc.BidiStreamingServer[chat.ChatMessa
 			msg, err := stream.Recv()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					s.msgCh <- fmt.Sprintf("%s left the chat", s.peerUsername)
+					s.msgwr.WriteMessage(fmt.Sprintf("%s left the chat", s.peerUsername))
 					break
 				}
 
@@ -122,11 +126,11 @@ func (s *Server) StartChatChannel(stream grpc.BidiStreamingServer[chat.ChatMessa
 					break
 				}
 
-				s.msgCh <- "ERROR: " + err.Error()
+				s.msgwr.WriteMessage("ERROR: " + err.Error())
 				break
 			}
 
-			s.msgCh <- chat.FormatMessage(msg.Content, s.peerUsername)
+			s.msgwr.WriteMessage(chat.FormatMessage(msg.Content, s.peerUsername))
 		}
 
 		s.ChatClosed <- struct{}{}
@@ -147,6 +151,6 @@ func (s *Server) Start(addr string) error {
 	srv := grpc.NewServer()
 	chat.RegisterChatServer(srv, s)
 
-	s.msgCh <- fmt.Sprintf("server at %s", lis.Addr())
+	s.msgwr.WriteMessage(fmt.Sprintf("server at %s", lis.Addr()))
 	return srv.Serve(lis)
 }

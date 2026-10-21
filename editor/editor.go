@@ -3,16 +3,17 @@ package editor
 import (
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/term"
 )
 
 var (
-	linefeed          = [4]byte{0x0d}
-	endOfText         = [4]byte{0x03}
-	endOfTransmission = [4]byte{0x04}
-	backspace         = [4]byte{0x7f}
-	delete_           = [4]byte{0x08}
+	linefeed          byte = 0x0d
+	endOfText         byte = 0x03
+	endOfTransmission byte = 0x04
+	backspace         byte = 0x7f
+	delete_           byte = 0x08
 )
 
 type input struct {
@@ -21,20 +22,19 @@ type input struct {
 }
 
 type Editor struct {
-	linebuf [1024]byte
-	lineend int
+	mu         sync.Mutex
+	linebuf    [1024]byte
+	lineend    int
+	prompt     string
+	renderLine bool
 
-	inputCh   chan input
 	messageCh chan string
 
 	in, out *os.File
-
-	originalState *term.State
 }
 
 func New(in *os.File, out *os.File) *Editor {
 	return &Editor{
-		inputCh:   make(chan input, 1),
 		messageCh: make(chan string, 8),
 		in:        in,
 		out:       out,
@@ -43,76 +43,83 @@ func New(in *os.File, out *os.File) *Editor {
 
 func (e *Editor) Start() {
 	go func() {
-		var buf [4]byte
-		for {
-			clear(buf[:])
-			n, err := e.in.Read(buf[:])
-			if err == io.EOF {
-				e.inputCh <- input{b: endOfTransmission, n: 1}
-				return
+		for msg := range e.messageCh {
+			e.mu.Lock()
+			io.WriteString(e.out, "\r\x1b[2K")
+			io.WriteString(e.out, msg)
+			io.WriteString(e.out, "\r\n")
+			if e.renderLine {
+				io.WriteString(e.out, e.prompt)
+				e.out.Write(e.linebuf[:e.lineend])
 			}
-
-			e.inputCh <- input{b: buf, n: n}
-			// e.messageCh <- fmt.Sprintf("%v", buf[:n])
+			e.mu.Unlock()
 		}
 	}()
 }
 
-func (e *Editor) Readline(prompt string) (string, error) {
-	e.originalState, _ = term.MakeRaw(int(e.in.Fd()))
-	defer term.Restore(int(e.in.Fd()), e.originalState)
+func (e *Editor) SetPrompt(prompt string) {
+	e.prompt = prompt
+}
 
-	io.WriteString(e.out, prompt)
+func (e *Editor) Readline() (string, error) {
+	originalState, _ := term.MakeRaw(int(e.in.Fd()))
+	defer term.Restore(int(e.in.Fd()), originalState)
 
+	e.mu.Lock()
+	e.renderLine = true
+	io.WriteString(e.out, e.prompt)
+	e.mu.Unlock()
+
+	var buf [1]byte
 	for {
-		select {
-		case inp := <-e.inputCh:
-			switch inp.b {
-			case endOfText, endOfTransmission:
-				return "", io.EOF
-			case linefeed:
-				end := e.lineend
-				e.lineend = 0
-				io.WriteString(e.out, "\r\n")
-				return string(e.linebuf[:end]), nil
-			case backspace, delete_:
-				e.lineend = max(0, e.lineend-1)
-				io.WriteString(e.out, "\x1b[1D\x1b[0K")
-				continue
-			}
-
-			// is escape code
-			if inp.b[0] == 27 {
-				continue
-			}
-
-			copy(e.linebuf[e.lineend:], inp.b[:inp.n])
-			e.lineend += inp.n
-
-			e.out.Write(inp.b[:inp.n])
-
-		case msg := <-e.messageCh:
-			e.WriteMessage(msg)
-			io.WriteString(e.out, prompt)
-			e.out.Write(e.linebuf[:e.lineend])
+		clear(buf[:])
+		n, err := e.in.Read(buf[:])
+		if err == io.EOF || n == 0 {
+			e.mu.Lock()
+			e.renderLine = false
+			e.mu.Unlock()
+			return "", io.EOF
 		}
+
+		e.mu.Lock()
+		switch buf[0] {
+		case endOfText, endOfTransmission:
+			e.renderLine = false
+			e.mu.Unlock()
+			return "", io.EOF
+		case linefeed:
+			line := string(e.linebuf[:e.lineend])
+			e.lineend = 0
+			e.renderLine = false
+			io.WriteString(e.out, "\r\n")
+			e.mu.Unlock()
+			return line, nil
+		case backspace, delete_:
+			e.lineend = max(0, e.lineend-1)
+			io.WriteString(e.out, "\x1b[1D\x1b[0K")
+			e.mu.Unlock()
+			continue
+		}
+
+		// is escape code
+		if buf[0] == 27 {
+			e.mu.Unlock()
+			continue
+		}
+
+		if e.lineend == len(e.linebuf) {
+			e.WriteMessage("cannot read input - max line size reached")
+			continue
+		}
+
+		e.linebuf[e.lineend] = buf[0]
+		e.lineend += 1
+
+		e.out.Write(buf[:])
+		e.mu.Unlock()
 	}
 }
 
-func (e *Editor) AsyncWriteMessage(msg string) {
-	e.messageCh <- msg
-}
-
-func (e *Editor) GetMessageChan() chan<- string {
-	return e.messageCh
-}
-
-// WriteMessage should only be used on the same goroutine the Readline is used.
-// This method is not thread safe.
-//
-// If needed to write message from other goroutine use channel returned from GetMessageChan or use AsyncWriteMessage.
 func (e *Editor) WriteMessage(msg string) {
-	io.WriteString(e.out, "\r\x1b[2K")
-	io.WriteString(e.out, msg)
-	io.WriteString(e.out, "\r\n")
+	e.messageCh <- msg
 }

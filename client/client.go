@@ -13,16 +13,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type AsyncMessageWriter interface {
-	AsyncWriteMessage(string)
+type MessageWriter interface {
+	WriteMessage(string)
 }
 
 type Client struct {
-	msgwr    AsyncMessageWriter
+	msgwr    MessageWriter
 	username string
 }
 
-func New(username string, msgwr AsyncMessageWriter) *Client {
+func New(username string, msgwr MessageWriter) *Client {
 	return &Client{username: username, msgwr: msgwr}
 }
 
@@ -59,7 +59,7 @@ func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn,
 			msg, err := stream.Recv()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					c.msgwr.AsyncWriteMessage(fmt.Sprintf("%s left the chat", peerUsername))
+					c.msgwr.WriteMessage(fmt.Sprintf("%s left the chat", peerUsername))
 					break
 				}
 
@@ -67,11 +67,11 @@ func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn,
 					break
 				}
 
-				c.msgwr.AsyncWriteMessage("ERROR: unexpected error occurred when reading peer's chat message: " + err.Error())
+				c.msgwr.WriteMessage("ERROR: unexpected error occurred when reading peer's chat message: " + err.Error())
 				break
 			}
 
-			c.msgwr.AsyncWriteMessage(chat.FormatMessage(msg.Content, peerUsername))
+			c.msgwr.WriteMessage(chat.FormatMessage(msg.Content, peerUsername))
 		}
 		_ = conn.Close()
 	}()
