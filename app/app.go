@@ -118,12 +118,10 @@ func (a *App) handleConnect(addr string) error {
 	}
 
 	if sendMsg == nil {
-		a.msgwr.WriteMessage("server not accepted request")
 		a.server.AllowIncomingConnection()
 		return nil
 	}
 
-	a.msgwr.WriteMessage("chat request accepted")
 	a.server.RejectIncomingConnection("in chat")
 
 	a.client = clt

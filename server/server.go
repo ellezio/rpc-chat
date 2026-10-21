@@ -74,21 +74,23 @@ func (s *Server) RequestChat(ctx context.Context, pi *chat.PeerInfo) (*chat.Requ
 
 	deadline := time.After(time.Minute)
 
-	accept := false
-
 	select {
-	case accept = <-ch:
+	case accept := <-ch:
 		s.mu.Lock()
 		s.peerUsername = pi.Username
 		s.mu.Unlock()
+		return &chat.RequestChatReply{Accept: accept, PeerInfo: &chat.PeerInfo{Username: s.username}}, nil
+
 	case <-deadline:
 		s.msgwr.WriteMessage(fmt.Sprintf("%s(%s) Chat request has expired", pi.Username, p.Addr))
 		s.mu.Lock()
 		delete(s.pendingChatRequest, p.Addr.String())
 		s.mu.Unlock()
-	}
+		return &chat.RequestChatReply{Accept: false, PeerInfo: &chat.PeerInfo{Username: s.username}, RejectionReason: "chat request has expired"}, nil
 
-	return &chat.RequestChatReply{Accept: accept, PeerInfo: &chat.PeerInfo{Username: s.username}}, nil
+	case <-ctx.Done():
+		return nil, nil
+	}
 }
 
 func (s *Server) ReplyChatRequest(id string, accept bool) (chat.SendChatMessageFn, chat.LeaveChatFn, error) {

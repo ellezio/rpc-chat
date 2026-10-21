@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"rpc-chat/chat"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,8 +28,6 @@ func New(username string, msgwr MessageWriter) *Client {
 }
 
 func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn, error) {
-	ctx := context.Background()
-
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating gRPC client: %w", err)
@@ -36,7 +35,9 @@ func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn,
 
 	chatClient := chat.NewChatClient(conn)
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	reply, err := chatClient.RequestChat(ctx, &chat.PeerInfo{Username: c.username})
+	cancel()
 	if err != nil {
 		conn.Close()
 		return nil, nil, fmt.Errorf("requesting chat: %w", err)
@@ -48,7 +49,7 @@ func (c *Client) Connect(addr string) (chat.SendChatMessageFn, chat.LeaveChatFn,
 		return nil, nil, nil
 	}
 
-	stream, err := chatClient.StartChatChannel(ctx)
+	stream, err := chatClient.StartChatChannel(context.Background())
 	if err != nil {
 		conn.Close()
 		return nil, nil, fmt.Errorf("starting chat channel: %w", err)
