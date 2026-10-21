@@ -77,6 +77,10 @@ func (a *App) handleCommand(command string) (bool, error) {
 	case "/exit":
 		return true, nil
 	case "/connect":
+		if a.isInChat() {
+			return false, errors.New("cannot connect, already in chat")
+		}
+
 		addr, ok := next()
 		if !ok {
 			return false, errors.New("expected address")
@@ -85,6 +89,10 @@ func (a *App) handleCommand(command string) (bool, error) {
 			return false, fmt.Errorf("failed to connect: %w", err)
 		}
 	case "/accept":
+		if a.isInChat() {
+			return false, errors.New("cannot accept in chat")
+		}
+
 		addr, ok := next()
 		if !ok {
 			return false, errors.New("expected address")
@@ -141,4 +149,8 @@ func (a *App) handleLeaveChat() bool {
 	}
 
 	return false
+}
+
+func (a *App) isInChat() bool {
+	return a.sendMsg != nil
 }
